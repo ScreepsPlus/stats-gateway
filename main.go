@@ -36,7 +36,12 @@ func Find(next http.Handler) http.Handler {
     		return
     	}
     	cookie := r.Header.Get("Cookie")
-    	orgs := GetOrgs(cookie)
+    	orgs, err := GetOrgs(cookie)
+    	if err != nil {
+			fmt.Printf("%+v\n", err)
+			w.WriteHeader(500)
+			return
+		}
     	if query == "screeps.*" || strings.HasPrefix(query, "screeps.*") {
     		acl := GetACL(orgs)
     		query = strings.Replace(query, "*", acl, 1)
@@ -52,7 +57,13 @@ func Find(next http.Handler) http.Handler {
 func Render(next http.Handler) http.Handler {
     ourFunc := func(w http.ResponseWriter, r *http.Request) {
     	cookie := r.Header.Get("Cookie")
-    	orgs := GetOrgs(cookie)
+    	orgs, err := GetOrgs(cookie)
+    	if err != nil {
+			fmt.Printf("%+v\n", err)
+			w.WriteHeader(500)
+			return
+		}
+		
     	acl := GetACL(orgs)
     	r.ParseForm()
     	targets := r.PostForm["target"]
@@ -93,7 +104,7 @@ func GetACL(orgs []GrafanaOrganization) string {
 	return s
 }
 
-func GetOrgs(cookie string) []GrafanaOrganization {
+func GetOrgs(cookie string) ([]GrafanaOrganization, error) {
 	req, _ := http.NewRequest("GET", grafanaUrl + "/api/user/orgs", nil)
 	req.Header.Add("Cookie", cookie)
 	var client http.Client
@@ -101,10 +112,7 @@ func GetOrgs(cookie string) []GrafanaOrganization {
 	defer res.Body.Close()
 	orgs := make([]GrafanaOrganization,0)
 	err := json.NewDecoder(res.Body).Decode(&orgs)
-	if err != nil {
-		log.Fatal(err)
-	}
-	return orgs
+	return orgs, err
 }
 
 func MetricMap(list []string, base string) []byte {
