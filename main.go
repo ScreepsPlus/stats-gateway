@@ -124,7 +124,13 @@ func GetOrgs(cookie string) ([]GrafanaOrganization, error) {
 	res, _ := client.Do(req)
 	defer res.Body.Close()
 	orgs := make([]GrafanaOrganization, 0)
-	err := json.NewDecoder(res.Body).Decode(&orgs)
+	// err := json.NewDecoder(res.Body).Decode(&orgs)
+    buf := make([]byte, res.ContentLength)
+    buf, err := ioutil.ReadAll(res.Body)
+    err = json.Unmarshal(buf, &orgs)
+    if err != nil {
+        fmt.Printf("%s %+v", string(buf), err)
+    }
 	return orgs, err
 }
 
