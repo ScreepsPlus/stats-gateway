@@ -42,29 +42,36 @@ func Find(next http.Handler) http.Handler {
 			w.WriteHeader(500)
 			return
 		}
-        valid := false
-        for _, org := range orgs {
-            val := fmt.Sprintf("screeps.%s", org.Name)
-            if strings.HasPrefix(query, val) {
-                valid = true
-                break
-            }
-        }
+		valid := false
+		for _, org := range orgs {
+			val := fmt.Sprintf("screeps.%s", org.Name)
+			if strings.HasPrefix(query, val) {
+				valid = true
+				break
+			}
+		}
 		if query == "screeps.*" || strings.HasPrefix(query, "screeps.*") {
 			acl := GetACL(orgs)
 			query = strings.Replace(query, "*", acl, 1)
 			vals := r.URL.Query()
 			vals.Set("query", query)
 			r.URL.RawQuery = vals.Encode()
-            valid = true
+			valid = true
 		}
-        if valid {
-		  next.ServeHTTP(w, r)
-        } else {
-          w.WriteHeader(403)
-        }
+		if valid {
+			next.ServeHTTP(w, r)
+		} else {
+			w.WriteHeader(403)
+		}
 	}
 	return http.HandlerFunc(ourFunc)
+}
+
+func GetTargets(r http.Request) []string {
+	if r.Method == "GET" {
+		ret := make([]string, 1)
+		ret[0] = r.Query.Get("target")
+	}
 }
 
 func Render(next http.Handler) http.Handler {
@@ -78,8 +85,7 @@ func Render(next http.Handler) http.Handler {
 		}
 
 		acl := GetACL(orgs)
-		r.ParseForm()
-		targets := r.PostForm["target"]
+		targets := r.FormValue("target")
 		validTargets := make([]string, 0)
 		for _, target := range targets {
 			valid := false
@@ -125,12 +131,12 @@ func GetOrgs(cookie string) ([]GrafanaOrganization, error) {
 	defer res.Body.Close()
 	orgs := make([]GrafanaOrganization, 0)
 	// err := json.NewDecoder(res.Body).Decode(&orgs)
-    buf := make([]byte, res.ContentLength)
-    buf, err := ioutil.ReadAll(res.Body)
-    err = json.Unmarshal(buf, &orgs)
-    if err != nil {
-        fmt.Printf("%s %+v", string(buf), err)
-    }
+	buf := make([]byte, res.ContentLength)
+	buf, err := ioutil.ReadAll(res.Body)
+	err = json.Unmarshal(buf, &orgs)
+	if err != nil {
+		fmt.Printf("%s %+v", string(buf), err)
+	}
 	return orgs, err
 }
 
