@@ -67,13 +67,6 @@ func Find(next http.Handler) http.Handler {
 	return http.HandlerFunc(ourFunc)
 }
 
-func GetTargets(r http.Request) []string {
-	if r.Method == "GET" {
-		ret := make([]string, 1)
-		ret[0] = r.Query.Get("target")
-	}
-}
-
 func Render(next http.Handler) http.Handler {
 	ourFunc := func(w http.ResponseWriter, r *http.Request) {
 		cookie := r.Header.Get("Cookie")
@@ -85,7 +78,8 @@ func Render(next http.Handler) http.Handler {
 		}
 
 		acl := GetACL(orgs)
-		targets := r.FormValue("target")
+		r.ParseForm()
+		targets := r.Form["target"]
 		validTargets := make([]string, 0)
 		for _, target := range targets {
 			valid := false
@@ -104,8 +98,8 @@ func Render(next http.Handler) http.Handler {
 				validTargets = append(validTargets, target)
 			}
 		}
-		r.PostForm["target"] = validTargets
-		body := r.PostForm.Encode()
+		r.Form["target"] = validTargets
+		body := r.Form.Encode()
 		r.Body = ioutil.NopCloser(bytes.NewBufferString(body))
 		r.ContentLength = int64(len(body))
 		next.ServeHTTP(w, r)
