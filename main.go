@@ -10,6 +10,7 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"os"
+	"strconv"
 	"strings"
 )
 
@@ -20,14 +21,15 @@ func main() {
 	url, _ := url.Parse(backendUrl)
 	proxy := httputil.NewSingleHostReverseProxy(url)
 	h := http.NewServeMux()
-	h.Handle("/metrics/find/", Find(proxy))
+	h.Handle("/metrics/find", Find(proxy))
 	h.Handle("/render", Render(proxy))
 	log.Fatal(http.ListenAndServe(":8181", h))
 }
 
 func Find(next http.Handler) http.Handler {
 	ourFunc := func(w http.ResponseWriter, r *http.Request) {
-		query := r.URL.Query().Get("query")
+		r.ParseForm()
+		query := r.Form.Get("query")
 		if query == "*" || query == "screeps" {
 			w.Header().Add("Content-Type", "application/json")
 			w.WriteHeader(200)
@@ -38,7 +40,7 @@ func Find(next http.Handler) http.Handler {
 		cookie := r.Header.Get("Cookie")
 		orgs, err := GetOrgs(cookie)
 		if err != nil {
-			fmt.Printf("%+v\n", err)
+			log.Printf("find getOrgs %+v\n", err)
 			w.WriteHeader(500)
 			return
 		}
@@ -53,14 +55,27 @@ func Find(next http.Handler) http.Handler {
 		if query == "screeps.*" || strings.HasPrefix(query, "screeps.*") {
 			acl := GetACL(orgs)
 			query = strings.Replace(query, "*", acl, 1)
-			vals := r.URL.Query()
-			vals.Set("query", query)
-			r.URL.RawQuery = vals.Encode()
+
+			switch r.Method {
+			case http.MethodPost:
+				r.PostForm.Set("query", query)
+			case http.MethodGet:
+				vals := r.URL.Query()
+				vals.Set("query", query)
+				r.URL.RawQuery = vals.Encode()
+			}
 			valid = true
 		}
 		if valid {
+			if r.Method == http.MethodPost {
+				str := r.PostForm.Encode()
+				r.Body = ioutil.NopCloser(strings.NewReader(str))
+				r.Header.Set("Content-Length", strconv.Itoa(len(str)))
+				r.ContentLength = int64(len(str))
+			}
 			next.ServeHTTP(w, r)
 		} else {
+			log.Printf("403: %s, %v", query, orgs)
 			w.WriteHeader(403)
 		}
 	}
@@ -72,7 +87,7 @@ func Render(next http.Handler) http.Handler {
 		cookie := r.Header.Get("Cookie")
 		orgs, err := GetOrgs(cookie)
 		if err != nil {
-			fmt.Printf("%+v\n", err)
+			log.Printf("render %+v\n", err)
 			w.WriteHeader(500)
 			return
 		}
@@ -124,14 +139,29 @@ func GetOrgs(cookie string) ([]GrafanaOrganization, error) {
 	res, _ := client.Do(req)
 	defer res.Body.Close()
 	orgs := make([]GrafanaOrganization, 0)
-	// err := json.NewDecoder(res.Body).Decode(&orgs)
-	buf := make([]byte, res.ContentLength)
-	buf, err := ioutil.ReadAll(res.Body)
-	err = json.Unmarshal(buf, &orgs)
+	err := json.NewDecoder(res.Body).Decode(&orgs)
 	if err != nil {
-		fmt.Printf("%s %+v", string(buf), err)
+		log.Printf("GetOrgs failed cookie=%s", cookie)
 	}
 	return orgs, err
+}
+
+type GetOrgsResp struct {
+	Orgs  []GrafanaOrganization
+	Error string
+}
+
+func (g *GetOrgsResp) UnmarshalJSON(b []byte) error {
+	var tmp interface{}
+	g.Orgs = make([]GrafanaOrganization, 0)
+	if err := json.Unmarshal(b, tmp); err != nil {
+		return err
+	}
+	if v, ok := tmp.(map[string]string); ok {
+		g.Error = v["error"]
+		return nil
+	}
+	return json.Unmarshal(b, &g.Orgs)
 }
 
 func MetricMap(list []string, base string) []byte {
