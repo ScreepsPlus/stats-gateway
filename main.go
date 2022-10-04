@@ -22,7 +22,9 @@ func main() {
 	proxy := httputil.NewSingleHostReverseProxy(url)
 	h := http.NewServeMux()
 	h.Handle("/metrics/find", Find(proxy))
+	h.Handle("/tags/autoComplete/tags", Tags(proxy))
 	h.Handle("/render", Render(proxy))
+	h.Handle("/functions", Functions(proxy))
 	log.Fatal(http.ListenAndServe(":8181", h))
 }
 
@@ -117,6 +119,19 @@ func Render(next http.Handler) http.Handler {
 		body := r.Form.Encode()
 		r.Body = ioutil.NopCloser(bytes.NewBufferString(body))
 		r.ContentLength = int64(len(body))
+		next.ServeHTTP(w, r)
+	}
+	return http.HandlerFunc(ourFunc)
+}
+
+func Functions(next http.Handler) http.Handler {
+	ourFunc := func(w http.ResponseWriter, r *http.Request) {
+		next.ServeHTTP(w, r)
+	}
+	return http.HandlerFunc(ourFunc)
+}
+func Tags(next http.Handler) http.Handler {
+	ourFunc := func(w http.ResponseWriter, r *http.Request) {
 		next.ServeHTTP(w, r)
 	}
 	return http.HandlerFunc(ourFunc)
