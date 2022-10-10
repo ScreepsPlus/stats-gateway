@@ -47,16 +47,14 @@ func Find(next http.Handler) http.Handler {
 			return
 		}
 		valid := false
-		for _, org := range orgs {
-			val := fmt.Sprintf("screeps.%s", org.Name)
-			if strings.HasPrefix(query, val) {
-				valid = true
-				break
+		if strings.HasPrefix(query, "screeps.") {
+			if query == "screeps.*" || strings.HasPrefix(query, "screeps.*") {
+				acl := GetACL(orgs)
+				query = strings.Replace(query, "*", acl+".*", 1)
+			} else if strings.HasPrefix(query, "screeps.") {
+				acl := GetACL(orgs)
+				query = strings.Replace(query, "screeps", "screeps."+acl, 1)
 			}
-		}
-		if query == "screeps.*" || strings.HasPrefix(query, "screeps.*") {
-			acl := GetACL(orgs)
-			query = strings.Replace(query, "*", acl, 1)
 
 			switch r.Method {
 			case http.MethodPost:
@@ -68,6 +66,7 @@ func Find(next http.Handler) http.Handler {
 			}
 			valid = true
 		}
+
 		if valid {
 			if r.Method == http.MethodPost {
 				str := r.PostForm.Encode()
