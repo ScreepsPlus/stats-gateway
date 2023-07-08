@@ -32,10 +32,10 @@ func Find(next http.Handler) http.Handler {
 	ourFunc := func(w http.ResponseWriter, r *http.Request) {
 		r.ParseForm()
 		query := r.Form.Get("query")
-		if query == "*" || query == "screeps" {
+		if query == "*" || query == "data" {
 			w.Header().Add("Content-Type", "application/json")
 			w.WriteHeader(200)
-			b := MetricMap([]string{"screeps"}, "")
+			b := MetricMap([]string{"data"}, "")
 			w.Write(b)
 			return
 		}
@@ -47,13 +47,13 @@ func Find(next http.Handler) http.Handler {
 			return
 		}
 		valid := false
-		if strings.HasPrefix(query, "screeps.") {
-			if query == "screeps.*" || strings.HasPrefix(query, "screeps.*") {
+		if strings.HasPrefix(query, "data.") {
+			if query == "data.*" || strings.HasPrefix(query, "data.*") {
 				acl := GetACL(orgs)
 				query = strings.Replace(query, "*", acl+".*", 1)
-			} else if strings.HasPrefix(query, "screeps.") {
+			} else if strings.HasPrefix(query, "data.") {
 				acl := GetACL(orgs)
-				query = strings.Replace(query, "screeps", "screeps."+acl, 1)
+				query = strings.Replace(query, "data", "data."+acl, 1)
 			}
 
 			switch r.Method {
@@ -139,7 +139,7 @@ func Tags(next http.Handler) http.Handler {
 func GetACL(orgs []GrafanaOrganization) string {
 	var list []string
 	for _, org := range orgs {
-		list = append(list, org.Name)
+		list = append(list, strconv.Itoa(org.OrgId))
 	}
 	s := strings.Join(list, ",")
 	s = fmt.Sprintf("{%s}", s)
