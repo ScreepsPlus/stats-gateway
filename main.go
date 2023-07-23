@@ -40,12 +40,13 @@ func Find(next http.Handler) http.Handler {
 			return
 		}
 		cookie := r.Header.Get("Cookie")
-		orgs, err := GetOrgs(cookie)
-		if err != nil {
-			log.Printf("find getOrgs %+v\n", err)
-			w.WriteHeader(500)
-			return
-		}
+		// orgs, err := GetOrgs(cookie)
+		// if err != nil {
+		// 	log.Printf("find getOrgs %+v\n", err)
+		// 	w.WriteHeader(500)
+		// 	return
+		// }
+		orgs := r.Header.Get("X-Grafana-Org-Id")
 		valid := false
 		if strings.HasPrefix(query, "data.") {
 			if query == "data.*" || strings.HasPrefix(query, "data.*") {
@@ -86,12 +87,13 @@ func Find(next http.Handler) http.Handler {
 func Render(next http.Handler) http.Handler {
 	ourFunc := func(w http.ResponseWriter, r *http.Request) {
 		cookie := r.Header.Get("Cookie")
-		orgs, err := GetOrgs(cookie)
-		if err != nil {
-			log.Printf("render %+v\n", err)
-			w.WriteHeader(500)
-			return
-		}
+		// orgs, err := GetOrgs(cookie)
+		// if err != nil {
+		// 	log.Printf("render %+v\n", err)
+		// 	w.WriteHeader(500)
+		// 	return
+		// }
+		orgs := r.Header.Get("X-Grafana-Org-Id")
 
 		acl := GetACL(orgs)
 		r.ParseForm()
@@ -146,37 +148,37 @@ func GetACL(orgs []GrafanaOrganization) string {
 	return s
 }
 
-func GetOrgs(cookie string) ([]GrafanaOrganization, error) {
-	req, _ := http.NewRequest("GET", grafanaUrl+"/api/user/orgs", nil)
-	req.Header.Add("Cookie", cookie)
-	var client http.Client
-	res, _ := client.Do(req)
-	defer res.Body.Close()
-	orgs := make([]GrafanaOrganization, 0)
-	err := json.NewDecoder(res.Body).Decode(&orgs)
-	if err != nil {
-		log.Printf("GetOrgs failed cookie=%s", cookie)
-	}
-	return orgs, err
-}
+// func GetOrgs(cookie string) ([]GrafanaOrganization, error) {
+// 	req, _ := http.NewRequest("GET", grafanaUrl+"/api/user/orgs", nil)
+// 	req.Header.Add("Cookie", cookie)
+// 	var client http.Client
+// 	res, _ := client.Do(req)
+// 	defer res.Body.Close()
+// 	orgs := make([]GrafanaOrganization, 0)
+// 	err := json.NewDecoder(res.Body).Decode(&orgs)
+// 	if err != nil {
+// 		log.Printf("GetOrgs failed cookie=%s", cookie)
+// 	}
+// 	return orgs, err
+// }
 
-type GetOrgsResp struct {
-	Orgs  []GrafanaOrganization
-	Error string
-}
+// type GetOrgsResp struct {
+// 	Orgs  []GrafanaOrganization
+// 	Error string
+// }
 
-func (g *GetOrgsResp) UnmarshalJSON(b []byte) error {
-	var tmp interface{}
-	g.Orgs = make([]GrafanaOrganization, 0)
-	if err := json.Unmarshal(b, tmp); err != nil {
-		return err
-	}
-	if v, ok := tmp.(map[string]string); ok {
-		g.Error = v["error"]
-		return nil
-	}
-	return json.Unmarshal(b, &g.Orgs)
-}
+// func (g *GetOrgsResp) UnmarshalJSON(b []byte) error {
+// 	var tmp interface{}
+// 	g.Orgs = make([]GrafanaOrganization, 0)
+// 	if err := json.Unmarshal(b, tmp); err != nil {
+// 		return err
+// 	}
+// 	if v, ok := tmp.(map[string]string); ok {
+// 		g.Error = v["error"]
+// 		return nil
+// 	}
+// 	return json.Unmarshal(b, &g.Orgs)
+// }
 
 func MetricMap(list []string, base string) []byte {
 	ret := make([]*GraphiteMetric, 0, 0)
