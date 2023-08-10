@@ -1,3 +1,4 @@
 # stats-gateway
 
-docker push pieterbrandsen/stats-gateway:latest
+docker build -t pieterbrandsen/stats-gateway:1.0.0 . --no-cache
+docker push pieterbrandsen/stats-gateway:1.0.0

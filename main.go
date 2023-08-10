@@ -15,7 +15,9 @@ import (
 )
 
 var backendUrl string = os.Getenv("BACKEND_URL")
-var grafanaUrl string = os.Getenv("GRAFANA_URL")
+
+var startOfQuery string = "data"
+var backendStartOfQuery string = "data"
 
 func main() {
 	url, _ := url.Parse(backendUrl)
@@ -26,36 +28,31 @@ func main() {
 	h.Handle("/render", Render(proxy))
 	h.Handle("/functions", Functions(proxy))
 	log.Fatal(http.ListenAndServe(":8181", h))
+	log.Println("Listening on :8181")
 }
 
 func Find(next http.Handler) http.Handler {
 	ourFunc := func(w http.ResponseWriter, r *http.Request) {
 		r.ParseForm()
 		query := r.Form.Get("query")
-		if query == "*" || query == "data" {
+		if query == "*" || query == startOfQuery {
 			w.Header().Add("Content-Type", "application/json")
 			w.WriteHeader(200)
-			b := MetricMap([]string{"data"}, "")
+			b := MetricMap([]string{startOfQuery}, "")
 			w.Write(b)
 			return
 		}
-		cookie := r.Header.Get("Cookie")
-		// orgs, err := GetOrgs(cookie)
-		// if err != nil {
-		// 	log.Printf("find getOrgs %+v\n", err)
-		// 	w.WriteHeader(500)
-		// 	return
-		// }
-		orgs := r.Header.Get("X-Grafana-Org-Id")
+		orgId := r.Header.Get("X-Grafana-Org-Id")
+
 		valid := false
-		if strings.HasPrefix(query, "data.") {
-			if query == "data.*" || strings.HasPrefix(query, "data.*") {
-				acl := GetACL(orgs)
-				query = strings.Replace(query, "*", acl+".*", 1)
-			} else if strings.HasPrefix(query, "data.") {
-				acl := GetACL(orgs)
-				query = strings.Replace(query, "data", "data."+acl, 1)
+		if strings.HasPrefix(query, fmt.Sprintf("%s.", startOfQuery)) {
+			if query == fmt.Sprintf("%s.*", startOfQuery) || strings.HasPrefix(query, fmt.Sprintf("%s.*", startOfQuery)) {
+				query = strings.Replace(query, "*", orgId+".*", 1)
+			} else if strings.HasPrefix(query, fmt.Sprintf("%s.", startOfQuery)) {
+				query = strings.Replace(query, fmt.Sprintf("%s", startOfQuery), fmt.Sprintf("%s.", startOfQuery)+orgId, 1)
 			}
+
+			query := strings.Replace(query, startOfQuery, backendStartOfQuery, 1)
 
 			switch r.Method {
 			case http.MethodPost:
@@ -69,6 +66,7 @@ func Find(next http.Handler) http.Handler {
 		}
 
 		if valid {
+			log.Printf("200: %s, %v", query, orgId)
 			if r.Method == http.MethodPost {
 				str := r.PostForm.Encode()
 				r.Body = ioutil.NopCloser(strings.NewReader(str))
@@ -77,7 +75,7 @@ func Find(next http.Handler) http.Handler {
 			}
 			next.ServeHTTP(w, r)
 		} else {
-			log.Printf("403: %s, %v", query, orgs)
+			log.Printf("403: %s, %v", query, orgId)
 			w.WriteHeader(403)
 		}
 	}
@@ -86,36 +84,28 @@ func Find(next http.Handler) http.Handler {
 
 func Render(next http.Handler) http.Handler {
 	ourFunc := func(w http.ResponseWriter, r *http.Request) {
-		cookie := r.Header.Get("Cookie")
-		// orgs, err := GetOrgs(cookie)
-		// if err != nil {
-		// 	log.Printf("render %+v\n", err)
-		// 	w.WriteHeader(500)
-		// 	return
-		// }
-		orgs := r.Header.Get("X-Grafana-Org-Id")
+		orgId := r.Header.Get("X-Grafana-Org-Id")
 
-		acl := GetACL(orgs)
 		r.ParseForm()
 		targets := r.Form["target"]
 		validTargets := make([]string, 0)
 		for _, target := range targets {
 			valid := false
-			for _, org := range orgs {
-				val := fmt.Sprintf("screeps.%s", org.Name)
-				if strings.Contains(target, val) {
-					valid = true
-					break
-				}
+			target := strings.Replace(target, startOfQuery, fmt.Sprintf("%s.%s", backendStartOfQuery, orgId), 1)
+
+			val := fmt.Sprintf("%s.%s", backendStartOfQuery, orgId)
+			if strings.Contains(target, val) {
+				valid = true
 			}
-			if !valid && strings.Contains(target, "screeps.*") {
-				target = strings.Replace(target, "screeps.*", fmt.Sprintf("screeps.%s", acl), -1)
+			if !valid && strings.Contains(target, fmt.Sprintf("%s.*", startOfQuery)) {
+				target = strings.Replace(target, fmt.Sprintf("%s.*", startOfQuery), fmt.Sprintf("%s.%s", startOfQuery, orgId), -1)
 				valid = true
 			}
 			if valid {
 				validTargets = append(validTargets, target)
 			}
 		}
+
 		r.Form["target"] = validTargets
 		body := r.Form.Encode()
 		r.Body = ioutil.NopCloser(bytes.NewBufferString(body))
@@ -137,48 +127,6 @@ func Tags(next http.Handler) http.Handler {
 	}
 	return http.HandlerFunc(ourFunc)
 }
-
-func GetACL(orgs []GrafanaOrganization) string {
-	var list []string
-	for _, org := range orgs {
-		list = append(list, strconv.Itoa(org.OrgId))
-	}
-	s := strings.Join(list, ",")
-	s = fmt.Sprintf("{%s}", s)
-	return s
-}
-
-// func GetOrgs(cookie string) ([]GrafanaOrganization, error) {
-// 	req, _ := http.NewRequest("GET", grafanaUrl+"/api/user/orgs", nil)
-// 	req.Header.Add("Cookie", cookie)
-// 	var client http.Client
-// 	res, _ := client.Do(req)
-// 	defer res.Body.Close()
-// 	orgs := make([]GrafanaOrganization, 0)
-// 	err := json.NewDecoder(res.Body).Decode(&orgs)
-// 	if err != nil {
-// 		log.Printf("GetOrgs failed cookie=%s", cookie)
-// 	}
-// 	return orgs, err
-// }
-
-// type GetOrgsResp struct {
-// 	Orgs  []GrafanaOrganization
-// 	Error string
-// }
-
-// func (g *GetOrgsResp) UnmarshalJSON(b []byte) error {
-// 	var tmp interface{}
-// 	g.Orgs = make([]GrafanaOrganization, 0)
-// 	if err := json.Unmarshal(b, tmp); err != nil {
-// 		return err
-// 	}
-// 	if v, ok := tmp.(map[string]string); ok {
-// 		g.Error = v["error"]
-// 		return nil
-// 	}
-// 	return json.Unmarshal(b, &g.Orgs)
-// }
 
 func MetricMap(list []string, base string) []byte {
 	ret := make([]*GraphiteMetric, 0, 0)
@@ -205,10 +153,4 @@ type GraphiteMetric struct {
 	Id            string `json:"id"`
 	Leaf          int    `json:"leaf"`
 	Text          string `json:"text"`
-}
-
-type GrafanaOrganization struct {
-	OrgId int
-	Name  string
-	Role  string
 }
